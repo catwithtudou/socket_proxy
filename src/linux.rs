@@ -32,7 +32,7 @@ where
         libc::getsockopt(
             fd.as_raw_fd(),
             libc::SOL_IPV6,
-            libc::SOL_ORIGINAL_DST,
+            libc::SO_ORIGINAL_DST,
             &mut sockaddr as *mut _ as *mut c_void,
             &mut socklen as *mut _ as *mut socklen_t,
         )

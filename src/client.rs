@@ -1,13 +1,10 @@
 use bytes::Bytes;
 use log::debug;
-use nix::libc::{isupper, ledger_t};
 use std::sync::Arc;
 use std::{
     borrow::Cow,
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Duration,
-    vec,
 };
 
 use crate::config::Config;
