@@ -148,7 +148,7 @@ impl Client {
                     // domain
                     let domain_len = peer_left.read_u8().await? as usize;
                     buf.resize(domain_len, 0);
-                    let raw_ipv4 = peer_left.read_exact(&mut buf).await?;
+                    let _raw_ipv4 = peer_left.read_exact(&mut buf).await?;
                     let domain = String::from_utf8(buf).map_err(|_| {
                         io::Error::new(io::ErrorKind::InvalidInput, "Socksv5, invalid domain name")
                     })?;
