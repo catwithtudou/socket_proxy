@@ -1,6 +1,8 @@
 use bytes::{Bytes, BytesMut};
-use log::debug;
+use log::{debug, info};
+use std::fmt::format;
 use std::sync::Arc;
+use std::thread::scope;
 use std::time::Duration;
 use std::{
     borrow::Cow,
@@ -10,7 +12,9 @@ use std::{
 
 use crate::config::Config;
 use crate::linux::{get_original_address_v4, get_original_address_v6};
+use crate::tls;
 
+use crate::protocols::handshake;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -198,9 +202,20 @@ impl Client {
             // 只保留读出的数据，丢弃其他数据
             // 这样保证往 socket 回写时不会写入初始化时的 0
             buf.truncate(len);
-            // TODO:TLS处理
-        }
+            match tls::parse_client_hello(&buf) {
+                Err(err) => info!("failed to parse hello:{}", err),
+                Ok(hello) => {
+                    if let Some(server_name) = hello.server_name {
+                        dest = (server_name.as_ref(), dest.port).into();
+                    }
+                }
+            }
 
+            // 将 socket 读取得到的数据进行存储，后续会发送给 server
+            // 通过 tls parser 获取 SNI 只是为了 remote dns
+            // 由于没有证书，无法做 https 代理，所以建立 tcp socket 后将 client 读取的 tls hello 透明发送给 server
+            pending_data = Some(buf.freeze());
+        }
         Ok(Client {
             from_port,
             dest,
@@ -209,5 +224,29 @@ impl Client {
             pending_data,
             config,
         })
+    }
+
+    // connect_remote_server 连接 socks5 server
+    pub async fn connect_remote_server(&self) -> io::Result<TcpStream> {
+        let Client {
+            ref dest,
+            ref from_port,
+            ref left,
+            config,
+            ..
+        } = self;
+        let socks_server = config.socket5_server;
+        let mut stream = match TcpStream::connect(socks_server).await {
+            Ok(stream) => stream,
+            Err(err) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    format!("connect remote socks server failed with error {}", err),
+                ))
+            }
+        };
+
+        handshake(&mut stream, dest, self.pending_data.clone()).await?;
+        Ok(stream)
     }
 }
