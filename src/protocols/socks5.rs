@@ -21,7 +21,6 @@ pub async fn handshake<T>(
 where
     T: AsRef<[u8]>,
 {
-    let Destination { ref host, ref port } = dest;
     // 执行 socks5 握手🤝
     // https://datatracker.ietf.org/doc/html/rfc1928#section-3
     do_handshake(remote, dest, data).await?;
@@ -71,5 +70,27 @@ where
 }
 
 fn build_request(buf: &mut Vec<u8>, dest: &Destination) {
-    // TODO:构造请求 https://datatracker.ietf.org/doc/html/rfc1928#section-4
+    // https://datatracker.ietf.org/doc/html/rfc1928#section-4
+    buf.extend(&[0x05, 0x01, 0x00]);
+    match dest.host {
+        Address::Ip(ip) => match ip {
+            IpAddr::V4(i) => {
+                // the address is a version-4 IP address, with a length of 4 octets
+                buf.extend_from_slice(&i.octets());
+            }
+            IpAddr::V6(ip) => {
+                buf.push(0x04);
+                // the address is a version-6 IP address, with a length of 16 octets.
+                buf.extend_from_slice(&ip.octets());
+            }
+        },
+        Address::Domain(ref name) => {
+            buf.push(0x03);
+            buf.push(name.len() as u8);
+            buf.extend(name.as_bytes());
+        }
+    }
+    //端口两字节
+    buf.push((dest.port >> 8) as u8);
+    buf.push(dest.port as u8);
 }
