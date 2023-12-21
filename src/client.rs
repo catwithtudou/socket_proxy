@@ -1,8 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use log::{debug, info};
-use std::fmt::format;
 use std::sync::Arc;
-use std::thread::scope;
 use std::time::Duration;
 use std::{
     borrow::Cow,
@@ -10,9 +8,9 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
-use crate::config::Config;
 use crate::linux::{get_original_address_v4, get_original_address_v6};
 use crate::tls;
+use crate::{config::Config, stream::pipe};
 
 use crate::protocols::handshake;
 use tokio::{
@@ -246,7 +244,18 @@ impl Client {
             }
         };
 
+        // we should handshake with socks5 server as the socks client
         handshake(&mut stream, dest, self.pending_data.clone()).await?;
         Ok(stream)
+    }
+
+    pub async fn do_pipe(self, remote: TcpStream) -> io::Result<()> {
+        match pipe(self.left, remote).await {
+            Ok(()) => Ok(()),
+            Err(err) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                format!("failed to pipe connection with err {}", err),
+            )),
+        }
     }
 }
