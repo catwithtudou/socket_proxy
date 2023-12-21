@@ -1,3 +1,4 @@
+use libc::{read, termios};
 use std::{
     cell::RefCell,
     cmp,
@@ -148,8 +149,37 @@ pub fn pipe(left: TcpStream, right: TcpStream) -> BiPipe {
 
 impl BiPipe {
     fn poll_one_side(&mut self, ctx: &mut Context, side: Side) -> Poll<io::Result<()>> {
-        // TODO:完善
-        Poll::Ready(Ok(()))
+        let Self {
+            ref mut left,
+            ref mut right,
+            ..
+        } = *self;
+        let (reader, writer) = match side {
+            Side::Left => (left, right),
+            Side::Right => (right, left),
+        };
+        loop {
+            if reader.is_empty() && !reader.read_eof {
+                let n = try_poll!(reader.poll_read_to_buffer(ctx));
+            }
+
+            while !reader.is_empty() {
+                try_poll!(reader.poll_write_buffer_to(ctx, &mut writer.stream));
+            }
+            if reader.read_eof {
+                match Pin::new(&mut writer.stream).poll_shutdown(ctx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Ok(())) => (),
+                    Poll::Ready(Err(err)) => {
+                        debug!("failed to shutdown, maybe connect error. Error=[{}]", err)
+                    }
+                }
+                // writer 已经关闭
+                // reader 将在另一个 poll_one_side 作为 writer 被关闭
+                reader.done = true;
+                return Poll::Ready(Ok(()));
+            }
+        }
     }
 }
 
