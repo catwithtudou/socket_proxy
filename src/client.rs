@@ -190,7 +190,7 @@ impl Client {
             mut dest,
             from_port,
             config,
-            pending_data,
+            pending_data: _pending_data,
         } = self;
         let wait = Duration::from_millis(500);
         let mut buf = BytesMut::with_capacity(2048);
@@ -228,8 +228,8 @@ impl Client {
     pub async fn connect_remote_server(&self) -> io::Result<TcpStream> {
         let Client {
             ref dest,
-            ref from_port,
-            ref left,
+            from_port: ref _from_port,
+            left: ref _left,
             config,
             ..
         } = self;
