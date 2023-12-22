@@ -1,4 +1,3 @@
-use libc::{read, termios};
 use std::{
     cell::RefCell,
     cmp,
@@ -160,7 +159,7 @@ impl BiPipe {
         };
         loop {
             if reader.is_empty() && !reader.read_eof {
-                let n = try_poll!(reader.poll_read_to_buffer(ctx));
+                try_poll!(reader.poll_read_to_buffer(ctx));
             }
 
             while !reader.is_empty() {
@@ -187,7 +186,40 @@ impl Future for BiPipe {
     type Output = io::Result<()>;
     // https://stackoverflow.com/questions/28587698/whats-the-difference-between-placing-mut-before-a-variable-name-and-after-the
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        // TODO:完善
-        Poll::Ready(Ok(()))
+        if !self.left.done {
+            if let Poll::Ready(Err(err)) = self.poll_one_side(ctx, Left) {
+                return Poll::Ready(Err(err));
+            }
+        }
+
+        if !self.right.done {
+            if let Poll::Ready(Err(err)) = self.poll_one_side(ctx, Right) {
+                return Poll::Ready(Err(err));
+            }
+        }
+
+        match (self.left.done, self.right.done) {
+            (true, true) => return Poll::Ready(Ok(())),
+            (false, false) => Poll::Pending,
+            _ => match &mut self.half_close_deadline {
+                None => {
+                    // 首次进入
+                    let mut ddl = Box::pin(sleep(HALF_CLOSE_TIMEOUT));
+                    let _ = ddl.as_mut().poll(ctx);
+                    self.half_close_deadline = Some(ddl);
+                    Poll::Pending
+                }
+                Some(ddl) if !ddl.is_elapsed() => {
+                    // 设置超时时间
+                    ddl.as_mut().reset(Instant::now() + HALF_CLOSE_TIMEOUT);
+                    Poll::Pending
+                }
+                Some(_) => {
+                    // 超时后提前返回
+                    debug!("BiPipe half-close conn timeout");
+                    Poll::Ready(Ok(()))
+                }
+            },
+        }
     }
 }

@@ -49,7 +49,7 @@ pub fn parse_client_hello(data: &[u8]) -> Result<TlsClientHello, &'static str> {
     let TlsRecord {
         content_type,
         major_version,
-        minor_version,
+        minor_version: _minor_version,
         fragment,
     } = parse_tls_record(&data)?;
     if major_version != 3 {
